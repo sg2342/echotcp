@@ -1,0 +1,15 @@
+{application, echotcp,
+ [{description, "TCP echo service"},
+  {vsn, git},
+  {registered, []},
+  {mod, {echotcp_app, []}},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env, [{listen_port, 7777}, {acceptors, 5}]},
+  {modules, []},
+
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.
