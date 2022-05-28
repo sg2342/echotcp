@@ -1,0 +1,57 @@
+name:		%%name%%
+version:	%%version%%
+origin:		local/%%name%%
+comment:	%%comment%%
+www:		%%www%%
+maintainer:	%%maintainer%%
+license:	[%%license%%]
+categories:	[local]
+license_logic:	single
+prefix:		/usr/local
+
+deps: { }
+
+desc = <<EOD
+
+%%description%%
+
+EOD
+
+scripts: {
+    pre-install = <<EOD
+if [ -n "${PKG_ROOTDIR}" ] && [ "${PKG_ROOTDIR}" != "/" ]; then
+  PW="/usr/sbin/pw -R ${PKG_ROOTDIR}"
+else
+  PW=/usr/sbin/pw
+fi
+echo "===> Creating group."
+if ! ${PW} groupshow %%name%% >/dev/null 2>&1; then
+  echo "Creating group '%%name%%' with gid '%%gid%%'."
+  ${PW} groupadd %%name%% -g %%gid%%
+else
+  echo "Using existing group '%%name%%'"
+fi
+echo "===> Creating user."
+if ! ${PW} usershow '%%name%%' >/dev/null 2>&1; then
+  echo "Creating user '%%name%%' with uid '%%uid%%'."
+  ${PW} useradd %%name%% -u %%uid%% -g %%gid%% -h - -d /usr/local/lib/%%name%%
+else
+  echo "Using existing user '%%name%%'."
+fi
+EOD
+
+    post-install = <<EOD
+/bin/mkdir -p /var/log/%%name%% /var/run/%%name%%
+/usr/sbin/chown %%name%%:%%name%% /var/log/%%name%% /var/run/%%name%%
+EOD
+
+   post-deinstall = <<EOD
+if [ -n "${PKG_ROOTDIR}" ] && [ "${PKG_ROOTDIR}" != "/" ]; then
+  PW="/usr/sbin/pw -R ${PKG_ROOTDIR}"
+else
+  PW=/usr/sbin/pw
+fi
+${PW} groupdel %%name%%
+${PW} userdel  %%name%%
+EOD
+}

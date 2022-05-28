@@ -9,10 +9,10 @@ RHEL(-derivate) and FreeBSD systems.
 Create RHEL rpm
 -----
 
-    $ ./buildrpm.sh
+    $ ./rpm/create.sh
 
 
 Create FreeBSD pkg
 -----
 
-    $ ./buildpkg.sh
+    $ ./pkg/create.sh

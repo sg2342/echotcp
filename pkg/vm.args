@@ -1,0 +1,5 @@
+-noinput
+-noshell
+-mode embedded
++K true
++A30

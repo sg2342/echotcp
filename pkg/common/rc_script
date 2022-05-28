@@ -1,0 +1,168 @@
+#!/bin/sh
+
+# PROVIDE: %%NAME%%
+# REQUIRE: login
+# KEYWORD: shutdown
+
+# Below NAME should be subsituted with the name of this script.
+#
+#
+# The following variable are supported (defaults are shown).
+#
+# %%NAME%%_enable="NO"
+#
+# optional:
+#
+# %%NAME%%_epmd_port=4369
+# %%NAME%%_epmd_address="127.0.0.1"
+# %%NAME%%_cookie="%%NAME%%"
+# %%NAME%%_user="%%NAME%%"
+# %%NAME%%_root_dir="/usr/local/lib/%%NAME%%"
+# %%NAME%%_run_dir="/var/run/%%NAME%%"
+# 
+#
+
+. /etc/rc.subr
+
+# service(8) does not create an authentic environment, try to guess,
+# and as of 10.3-RELEASE-p0, it will not find the indented name=
+# assignments below. So give it a default.
+# Trailing semicolon also for service(8)'s benefit:
+name="$file" ;
+
+case "$0" in
+/etc/rc*)
+	# during boot (shutdown) $0 is /etc/rc (/etc/rc.shutdown),
+	# so get the name of the script from $_file
+	name="$_file"
+	;;
+*/service)
+	# do not use this as $0
+	;;
+*)
+	name="$0"
+	;;
+esac
+
+name="${name##*/}"
+rcvar=${name}_enable
+desc="${name} service (erlang release)"
+
+
+extra_commands="shell ping status"
+shell_cmd="er_shell_cmd"
+ping_cmd="er_ping_cmd"
+stop_cmd="er_stop_cmd"
+start_cmd="er_start_cmd"
+status_cmd="er_status_cmd"
+
+er_common() {
+    release_root_dir="$(eval echo \${${name}_root_dir})"
+    run_dir="$(eval echo \${${name}_run_dir})"
+    user="$(eval echo \${${name}_user})"
+    cookie="$(eval echo \${${name}_cookie})"
+    epmd_port="$(eval echo \${${name}_epmd_port})"
+    epmd_address="$(eval echo \${${name}_epmd_address})"
+
+    start_erl_data="$release_root_dir"/releases/start_erl.data
+    read -r erts_vsn rel_vsn < "$start_erl_data" || true
+
+    rel_name=${release_root_dir##*/}
+    rel_dir="${release_root_dir}/releases/${rel_vsn}"
+    erts_dir="${release_root_dir}/erts-${erts_vsn}"
+    erts_lib_dir="${erts_dir}/../lib"
+
+    export HOME="$release_root_dir"
+    export ROOTDIR="$release_root_dir"
+    export BINDIR="${erts_dir}/bin"
+    export EMU="beam"
+    export PROGNAME="erl"
+    export ERL_EPMD_PORT="$epmd_port"
+    export NAME="$rel_name"
+    if [ "$epmd_address" ] ; then
+	export ERL_EPMD_ADDRESS="$epmd_address"
+    fi
+
+    cd "$release_root_dir" || exit 1
+}
+
+er_status_cmd()
+{
+    run_dir="$(eval echo \${${name}_run_dir})"
+    pidfile=$run_dir/child.pid
+    [ -f $pidfile ] && pid=$(cat $pidfile)
+
+    if [ "$pid" ]; then
+	printf '%s is running as pid %s.\n' "$name" "$pid"
+    else
+	printf '%s is not running.\n' "$name"
+	exit 1
+    fi
+}
+
+
+er_stop_cmd()
+{
+    run_dir="$(eval echo \${${name}_run_dir})"
+    pidfile=$run_dir/child.pid
+    [ -f $pidfile ] && pid=$(cat $pidfile)
+
+    if [ "$pid" ]; then
+	kill "$pid"
+    else
+	printf '%s is not running? (check %s).\n' "$name" "$pidfile"
+	exit 1
+    fi
+}
+
+er_start_cmd()
+{
+   er_common
+    
+    sys_config="${rel_dir}/sys.config"
+    vm_args="${rel_dir}/vm.args"
+
+    daemon -f -S -T "$rel_name" -u "$user" \
+	   -p "$run_dir"/child.pid \
+	   -P "$run_dir"/supervisor.pid \
+	   "$BINDIR"/erlexec -config "$sys_config" -args_file "$vm_args" \
+	   -boot_var ERTS_LIB_DIR "$erts_lib_dir" \
+	   -setcookie "$cookie" -name "$rel_name" \
+	   -boot "$rel_dir"/start
+
+}
+er_ping_cmd()
+{
+    er_common
+    exec "$BINDIR"/erlexec -mode interactive \
+	 -boot_var ERTS_LIB_DIR "$erts_lib_dir" \
+	 -setcookie "$cookie" -name ping-"$rel_name" \
+	 -boot "$rel_dir"/start_clean -noshell -noinput -hidden \
+	 -eval 'io:format("~p~n",[net_adm:ping(list_to_atom(os:getenv("NAME") ++ "@" ++ net_adm:localhost()))]),init:stop().'
+}
+
+er_shell_cmd()
+{
+    er_common
+
+    if [ -z "$TERM" ] ; then TERM=xterm ; fi; export TERM
+
+    printf '\n\n\tCTRL-C twice to detach\n\n'
+
+    exec "$BINDIR"/erlexec -mode interactive \
+	 -boot_var ERTS_LIB_DIR "$erts_lib_dir" \
+	 -setcookie "$cookie" -name remsh-"$rel_name" -hidden \
+	 -boot "$rel_dir"/start_clean -remsh "$rel_name"
+}
+
+load_rc_config ${name}
+
+eval ": \${${name}_enable:=\"NO\"}"
+eval ": \${${name}_epmd_port:=4369}"
+eval ": \${${name}_epmd_address:=\"127.0.0.1\"}"
+eval ": \${${name}_user:=\"$name\"}"
+eval ": \${${name}_cookie:=\"$cookie\"}"
+eval ": \${${name}_root_dir:=\"/usr/local/lib/$name\"}"
+eval ": \${${name}_run_dir:=\"/var/run/$name\"}"
+
+run_rc_command "$1"

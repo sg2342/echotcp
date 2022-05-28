@@ -1,0 +1,76 @@
+set -e
+
+# make sure anything we use is set...
+[ "$name" ] || exit 1
+[ "$comment" ] || exit 1
+[ "$description" ] || exit 1
+[ "$www" ] || exit 1
+[ "$uid" ] || exit 1
+[ "$gid" ] || exit 1
+[ "$license" ] || exit 1
+[ "$maintainer" ] || exit 1
+[ -f "$vm_args" ] || exit 1
+[ -f "$sys_config" ] || exit 1
+[ -f "$override" ] || exit 1
+[ -d "$basedir" ] || exit 1
+
+pdir=$basedir/pkg
+tmpd=$basedir/_build/prod/stage
+manifest=$tmpd/+MANIFEST
+rootdir=$tmpd/rootdir
+gitver=$(git describe --tags --match '*\.*\.*')
+tgz=$basedir/_build/prod/rel/$name/$name"-${gitver}.tar.gz"
+
+# build release tarball
+( cd "$basedir";
+  rm -rf _build;
+  rebar3 as prod tar \
+         --vm_args "$vm_args" \
+         --sys_config "$sys_config"; )
+
+# prepare pkg create cleanup and directories
+#trap 'rm -rf $tmpd' 0 INT EXIT
+
+mkdir -p "$rootdir"/usr/local/lib/"$name" \
+      "$rootdir"/usr/local/etc/rc.d \
+      "$rootdir"/usr/local/etc/"$name"
+
+sed -e "s:%%NAME%%:${name}:g" \
+    "$pdir"/common/rc_script > "$rootdir"/usr/local/etc/rc.d/"$name"
+chmod a+x "$rootdir"/usr/local/etc/rc.d/"$name"
+cp "$override" "$rootdir"/usr/local/etc/"$name"/override.config
+tar -C "$rootdir"/usr/local/lib/"$name" -xf "$tgz"
+
+# create +MANIFEST
+flatsize=$(find "$rootdir" -type f -exec stat -f %z {} + |
+               awk 'BEGIN {s=0} {s+=$1} END {print s}')
+
+sed -e "s:%%version%%:${gitver}:" \
+    -e "s:%%flatsize%%:${flatsize}:" \
+    -e "s:%%comment%%:${comment}:" \
+    -e "s:%%name%%:${name}:g" \
+    -e "s,%%www%%,${www}," \
+    -e "s:%%uid%%:${uid}:" \
+    -e "s:%%gid%%:${gid}:" \
+    -e "s:%%maintainer%%:${maintainer}:" \
+    -e "s:%%license%%:${license}:" \
+    -e "s:%%description%%:${description}:" \
+    -e "s:%%comment%%:${comment}:" \
+    "$pdir"/common/MANIFEST > "$manifest"
+
+{
+    printf '\nfiles {\n'
+    find "$rootdir" -type f -exec sha256 -r {} + | sort |
+        awk '{print "    " $2 ": \"" $1 "\"," }'
+    find "$rootdir" -type l | sort |
+        awk "{print \"    \"\$1 \": -,\"}"
+    printf '}\n'
+} | sed -e "s:${rootdir}::" >> "$manifest"
+
+# create package
+SOURCE_DATE_EPOCH=$(git log -1 --pretty=format:%ct)
+export SOURCE_DATE_EPOCH
+pkg create -r "$rootdir" -M "$manifest" -o "$basedir/_build/prod/"
+
+echo "created $name $gitver package:"
+echo "  $basedir/_build/prod/${name}-${gitver}.pkg"
