@@ -1,0 +1,2 @@
+A simple TCP echo service
+implemented with the new erlang socket API

@@ -1,0 +1,56 @@
+set -e
+
+export TERM=dumb
+
+# make sure anything we use is set...
+[ "$name" ] || exit 1
+[ "$summary" ] || exit 1
+[ "$www" ] || exit 1
+[ "$license" ] || exit 1
+[ -f "$description" ] || exit 1
+[ -f "$vm_args" ] || exit 1
+[ -f "$sys_config" ] || exit 1
+[ -f "$override" ] || exit 1
+[ -f "$firewalld" ] || exit 1
+[ -d "$basedir" ] || exit 1
+
+# build release tarball
+( cd "$basedir";
+  rm -rf _build;
+  rebar3 as prod tar \
+         --vm_args "$vm_args" \
+         --sys_config "$sys_config"; )
+
+rel_vsn=$(cut -f 2 -d " " "$basedir"/_build/prod/rel/"$name"/releases/start_erl.data)
+erts_vsn=$(cut -f 1 -d " " "$basedir"/_build/prod/rel/"$name"/releases/start_erl.data)
+archive="$basedir"/_build/prod/rel/"$name"/"$name"-"$rel_vsn".tar.gz
+commit_timestamp=$(date -d @$(git log -n1 --format="%at") +"%a %b %d %Y")
+
+# directories and artifacts
+mkdir -p  "$basedir"/_build/prod/rpm/SOURCES "$basedir"/_build/prod/rpm/BUILDROOT \
+      "$basedir"/_build/prod/rpm/RPMS "$basedir"/_build/prod/rpm/SPECS
+cp "$archive" "$basedir"/_build/prod/rpm/SOURCES
+cp "$firewalld" "$basedir"/_build/prod/rpm/SOURCES/"$name".firewalld
+cp "$override" "$basedir"/_build/prod/rpm/SOURCES/override.config
+cp "$basedir"/rpm/common/spec "$basedir"/_build/prod/rpm/SPECS
+cp "$description" "$basedir"/_build/prod/rpm/SOURCES/description
+
+# create the RPM
+( cd "$basedir"/_build/prod/rpm ;
+  rpmbuild --define "_version $rel_vsn" \
+	   --define "_name $name" \
+	   --define "_summary $summary" \
+	   --define "_license $license" \
+	   --define "_www $www" \
+	   --define "-erts_version $erts_vsn" \
+	   --define "_commit_timestamp $commit_timestamp" \
+	   --define "_topdir `cd . && pwd`" \
+	   -bb --clean --rmsource --rmspec SPECS/spec \
+	 2>$basedir/_build/prod/rpm/log.stderr \
+	 1>$basedir/_build/prod/rpm/log.stdout ; )
+
+echo
+echo
+echo "created $name $rel_vsn package:"
+find "$basedir/_build/prod/rpm/RPMS/" -name  $name-$rel_vsn-1.\*.rpm -print
+echo

@@ -1,0 +1,133 @@
+%define _build_id_links none
+Name:		%{_name}
+Version:	%{_version}
+Release:	1%{?dist}
+Summary:	%{_summary}
+Group:		Unspecified
+License:	%{_license}
+URL:		%{_www}	
+Source0:	%{name}-%{_version}.tar.gz
+Source1:        %{name}.firewalld
+Source2:	override.config
+Source3:	description
+BuildRoot:	%{_topdir}/BUILD/
+BuildRequires:	systemd-units
+Requires:	systemd firewalld-filesystem
+Requires(post):	firewalld-filesystem
+Requires(pre):	shadow-utils
+
+%description
+%(cat %SOURCE3)
+
+%prep
+echo ok
+
+%build
+echo ok
+
+%install
+[ "%{buildroot}" != "/" ] && %{__rm} -rf %{buildroot}
+
+mkdir -p %{buildroot}/%{_libdir}/%{name}
+tar -x -f %{SOURCE0} -C %{buildroot}/%{_libdir}/%{name}
+
+mkdir -p %{buildroot}/%{_libdir}/%{name}/bin
+cat > %{buildroot}/%{_libdir}/%{name}/bin/%{name} <<-EOF
+#!/bin/sh -e
+bn=\$(basename \$0)
+. %{_sysconfdir}/sysconfig/%{name}.d/env
+. %{_sysconfdir}/sysconfig/%{name}.d/name
+export BINDIR EMU ROOTDIR ERL_EPMD_ADDRESS NAME
+CMD="\$BINDIR/erlexec -boot \$ROOTDIR/releases/\$VSN/start_clean -mode interactive -name \$\$-\$NAME -setcookie \$COOKIE -hidden"
+
+case "\$1" in
+  remsh)
+    printf '\n\n\tCTRL-C twice to detach\n\n'
+    exec \$CMD -remsh \$NAME
+    ;;
+  stop)
+    exec \$CMD -noinput -noshell -eval 'io:format("~p~n",[rpc:call(list_to_atom(os:getenv("NAME")),init,stop,[])]),init:stop().'
+    ;;
+  ping)
+    exec \$CMD -noinput -noshell -eval 'io:format("~p~n",[net_adm:ping(list_to_atom(os:getenv("NAME")))]),init:stop().'
+    ;;
+  *)
+    printf 'usage: %s remsh|ping|stop\n' "\$bn" >&2
+    exit 1
+esac
+EOF
+chmod a+x %{buildroot}/%{_libdir}/%{name}/bin/%{name}
+
+
+mkdir -p %{buildroot}/%{_unitdir}
+cat > %{buildroot}/%{_unitdir}/%{name}.service <<-EOF
+[Unit]
+Description=%{summary}
+After=network-online.target
+
+[Service]
+User=%{name}
+Group=%{name}
+EnvironmentFile=-%{_sysconfdir}/sysconfig/%{name}.d/env
+EnvironmentFile=-%{_sysconfdir}/sysconfig/%{name}.d/name
+ExecStart=%{_libdir}/%{name}/erts-%{_erts_version}/bin/erlexec -boot \${ROOTDIR}/releases/\${VSN}/start -config \${ROOTDIR}/releases/\${VSN}/sys.config -args_file \${ROOTDIR}/releases/\${VSN}/vm.args -setcookie \${COOKIE} -name \${NAME}
+ExecStop=/bin/kill \$MAINPID
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+mkdir -p  %{buildroot}/%{_sysconfdir}/sysconfig/%{name}.d
+cat > %{buildroot}/%{_sysconfdir}/sysconfig/%{name}.d/env <<-EOF
+BINDIR=%{_libdir}/%{name}/erts-%{_erts_version}/bin
+EMU=beam
+ROOTDIR=%{_libdir}/%{name}
+VSN=%{_version}
+PROGNAME=%{name}
+ERL_EPMD_ADDRESS=127.0.0.1
+COOKIE=%{name}
+EOF
+
+cat > %{buildroot}/%{_sysconfdir}/sysconfig/%{name}.d/name <<-EOF
+NAME=%{name}
+EOF
+
+cp %{SOURCE2} %{buildroot}/%{_sysconfdir}/sysconfig/%{name}.d/override.config
+mkdir -p %{buildroot}/%{_prefix}/lib/firewalld/services
+cp %{SOURCE1} %{buildroot}/%{_prefix}/lib/firewalld/services/%{name}.xml
+
+
+%post
+mkdir -p %{_localstatedir}/log/%{name}
+chown %{name}:%{name} %{_localstatedir}/log/%{name}
+%firewalld_reload
+
+
+%preun
+%systemd_preun %{name}.service
+
+%postun
+%firewalld_reload
+%systemd_postun_with_restart %{name}.service
+
+
+%clean
+[ "%{buildroot}" != "/" ] && %{__rm} -rf %{buildroot}
+
+%pre
+getent group %{name} >/dev/null || groupadd -r %{name}
+getent passwd %{name} >/dev/null || \
+	useradd -r -g %{name} -d %{_localstatedir}/lib/%{name} -s /sbin/nologin \
+	-c "%{summary}" %{name}
+
+%files
+%{_libdir}/%{name}
+%{_unitdir}/%{name}.service
+%config(noreplace) %{_sysconfdir}/sysconfig/%{name}.d/env
+%config(noreplace) %{_sysconfdir}/sysconfig/%{name}.d/name
+%{_prefix}/lib/firewalld/services/%{name}.xml
+%config(noreplace) %{_sysconfdir}/sysconfig/%{name}.d/override.config
+
+%changelog
+* %{_commit_timestamp} XXX need Changelog automation XXX - %{version}
+- initial
