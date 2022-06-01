@@ -1,0 +1,5 @@
+/usr/lib/systemd/system/XXX-NAME-XXX.* -- gen_context(system_u:object_r:XXX-NAME-XXX_unit_t,s0)
+
+/usr/lib/XXX-NAME-XXX/erts-*/bin/erlexec -- gen_context(system_u:object_r:XXX-NAME-XXX_exec_t,s0)
+
+/var/log/XXX-NAME-XXX(/.*)? gen_context(system_u:object_r:XXX-NAME-XXX_var_log_t,s0)

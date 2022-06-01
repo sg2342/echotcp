@@ -34,6 +34,8 @@ cp "$firewalld" "$basedir"/_build/prod/rpm/SOURCES/"$name".firewalld
 cp "$override" "$basedir"/_build/prod/rpm/SOURCES/override.config
 cp "$basedir"/rpm/common/spec "$basedir"/_build/prod/rpm/SPECS
 cp "$description" "$basedir"/_build/prod/rpm/SOURCES/description
+cp "$basedir"/rpm/common/selinux.te "$basedir"/_build/prod/rpm/SOURCES/selinux.te  
+cp "$basedir"/rpm/common/selinux.fc "$basedir"/_build/prod/rpm/SOURCES/selinux.fc 
 
 # create the RPM
 ( cd "$basedir"/_build/prod/rpm ;

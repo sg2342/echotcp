@@ -1,0 +1,39 @@
+policy_module(XXX-NAME-XXX, 0.1.0)
+ 
+########################################
+#
+# Declarations
+#
+ 
+type XXX-NAME-XXX_t;
+type XXX-NAME-XXX_exec_t;
+init_daemon_domain(XXX-NAME-XXX_t, XXX-NAME-XXX_exec_t)
+
+type XXX-NAME-XXX_unit_t;
+systemd_unit_file(XXX-NAME-XXX_unit_t)
+
+type XXX-NAME-XXX_var_log_t;
+logging_log_file(XXX-NAME-XXX_var_log_t)
+
+
+allow XXX-NAME-XXX_t self:tcp_socket { accept bind connect create getattr getopt listen name_bind read setopt write };
+allow XXX-NAME-XXX_t self:process { execmem setsched signal signull sigkill };
+allow XXX-NAME-XXX_t unreserved_port_t:tcp_socket { accept bind connect create getattr getopt listen name_bind read setopt write };
+
+allow XXX-NAME-XXX_t tmpfs_t:file { execute map read write };
+
+auth_use_nsswitch(XXX-NAME-XXX_t)
+
+corecmd_exec_bin(XXX-NAME-XXX_t)
+corecmd_exec_shell(XXX-NAME-XXX_t)
+
+corenet_tcp_bind_epmd_port(XXX-NAME-XXX_t)
+corenet_tcp_bind_generic_port(XXX-NAME-XXX_t)
+corenet_tcp_connect_epmd_port(XXX-NAME-XXX_t)
+
+dev_read_rand(XXX-NAME-XXX_t)
+dev_read_sysfs(XXX-NAME-XXX_t)
+
+manage_dirs_pattern(XXX-NAME-XXX_t, XXX-NAME-XXX_var_log_t, XXX-NAME-XXX_var_log_t)
+manage_files_pattern(XXX-NAME-XXX_t, XXX-NAME-XXX_var_log_t, XXX-NAME-XXX_var_log_t)
+

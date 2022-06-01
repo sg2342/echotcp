@@ -10,20 +10,34 @@ Source0:	%{name}-%{_version}.tar.gz
 Source1:        %{name}.firewalld
 Source2:	override.config
 Source3:	description
+Source4:	selinux.te
+Source5:	selinux.fc
 BuildRoot:	%{_topdir}/BUILD/
 BuildRequires:	systemd-units
+BuildRequires:	make
+BuildRequires:	selinux-policy-devel
 Requires:	systemd firewalld-filesystem
 Requires(post):	firewalld-filesystem
 Requires(pre):	shadow-utils
+Requires: selinux-policy >= %{selinux_policyver}
+Requires(post): selinux-policy-base >= %{selinux_policyver}
+Requires(post): libselinux-utils
+
+%global selinuxtype targeted
+%global selinux_policyver 3.14.2
+%global moduletype contrib
+%global modulename %name
 
 %description
 %(cat %SOURCE3)
 
 %prep
-echo ok
+sed -e 's:XXX-NAME-XXX:%{name}:g' %{S:4} > %{name}.te
+sed -e 's:XXX-NAME-XXX:%{name}:g' %{S:5} > %{name}.fc
 
 %build
-echo ok
+make NAME=%{name} -f /usr/share/selinux/devel/Makefile
+bzip2 %{name}.pp
 
 %install
 [ "%{buildroot}" != "/" ] && %{__rm} -rf %{buildroot}
@@ -76,6 +90,7 @@ ExecStop=/bin/kill \$MAINPID
 [Install]
 WantedBy=multi-user.target
 EOF
+chmod 0644 %{buildroot}/%{_unitdir}/%{name}.service
 
 mkdir -p  %{buildroot}/%{_sysconfdir}/sysconfig/%{name}.d
 cat > %{buildroot}/%{_sysconfdir}/sysconfig/%{name}.d/env <<-EOF
@@ -89,18 +104,33 @@ COOKIE=%{name}
 EOF
 
 cat > %{buildroot}/%{_sysconfdir}/sysconfig/%{name}.d/name <<-EOF
-NAME=%{name}
+NAME=%{name}@localhost.localdomain
 EOF
 
 cp %{SOURCE2} %{buildroot}/%{_sysconfdir}/sysconfig/%{name}.d/override.config
 mkdir -p %{buildroot}/%{_prefix}/lib/firewalld/services
 cp %{SOURCE1} %{buildroot}/%{_prefix}/lib/firewalld/services/%{name}.xml
 
+# Install the SELinux policy
+install -d %{buildroot}%{_datadir}/selinux/packages
+install -d -p %{buildroot}%{_datadir}/selinux/devel/include/%{moduletype}
+ 
+install -p -m 0644 %{name}.if %{buildroot}%{_datadir}/selinux/devel/include/%{moduletype}
+install -p -m 0644 %{name}.pp.bz2 %{buildroot}%{_datadir}/selinux/packages
 
 %post
 mkdir -p %{_localstatedir}/log/%{name}
 chown %{name}:%{name} %{_localstatedir}/log/%{name}
+%systemd_post %{name}.service
 %firewalld_reload
+%selinux_modules_install -s %{selinuxtype} %{_datadir}/selinux/packages/%{modulename}.pp.bz2
+
+%posttrans
+/usr/sbin/restorecon -i -R /var/log/%{name}/
+/usr/sbin/restorecon -i -R %{_libdir}/%{name}/
+%selinux_relabel_post -s %{selinuxtype}
+
+
 
 
 %preun
@@ -109,6 +139,7 @@ chown %{name}:%{name} %{_localstatedir}/log/%{name}
 %postun
 %firewalld_reload
 %systemd_postun_with_restart %{name}.service
+%selinux_modules_uninstall -s %{selinuxtype} %{modulename}
 
 
 %clean
@@ -119,6 +150,8 @@ getent group %{name} >/dev/null || groupadd -r %{name}
 getent passwd %{name} >/dev/null || \
 	useradd -r -g %{name} -d %{_localstatedir}/lib/%{name} -s /sbin/nologin \
 	-c "%{summary}" %{name}
+%selinux_relabel_pre -s %{selinuxtype}
+
 
 %files
 %{_libdir}/%{name}
@@ -127,6 +160,8 @@ getent passwd %{name} >/dev/null || \
 %config(noreplace) %{_sysconfdir}/sysconfig/%{name}.d/name
 %{_prefix}/lib/firewalld/services/%{name}.xml
 %config(noreplace) %{_sysconfdir}/sysconfig/%{name}.d/override.config
+%{_datadir}/selinux/devel/include/%{moduletype}/%{name}.if
+%{_datadir}/selinux/packages/%{name}.pp.bz2
 
 %changelog
 * %{_commit_timestamp} XXX need Changelog automation XXX - %{version}
